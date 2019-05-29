@@ -41,6 +41,12 @@ pub struct MigrationFile {
     pub name: String
 }
 
+pub struct MigrationFileName {
+    pub number: u32,
+    pub name: String,
+    pub direction: Direction,
+}
+
 /// A migration has 2 files: one up and one down
 #[derive(Debug)]
 pub struct Migration {
@@ -70,9 +76,9 @@ impl MigrationFile {
 pub fn create_migration(path: &Path, slug: &str, number: i32) -> Result<()> {
     let fixed_slug = slug.replace(" ", "_");
     let filename_up = get_filename(&fixed_slug, number, Direction::Up);
-    parse_filename(&filename_up)?;
+    MigrationFileName::parse(&filename_up)?;
     let filename_down = get_filename(&fixed_slug, number, Direction::Down);
-    parse_filename(&filename_down)?;
+    MigrationFileName::parse(&filename_down)?;
 
     println!("Creating {}", filename_up);
     File::create(path.join(filename_up.clone())).chain_err(|| format!("Failed to create {}", filename_up))?;
@@ -97,7 +103,9 @@ pub fn read_migration_files(path: &Path) -> Result<Migrations> {
     for entry in fs::read_dir(path).chain_err(|| format!("Failed to open {:?}", path))? {
         let entry = entry.unwrap();
         // Will panic on invalid unicode in filename, unlikely (heh)
-        let info = match parse_filename(entry.file_name().to_str().unwrap()) {
+        let filename_bytes = entry.file_name();
+        let filename = filename_bytes.to_str().unwrap();
+        let info = match MigrationFileName::parse(filename) {
             Ok(info) => info,
             Err(_) => continue,
         };
@@ -106,7 +114,13 @@ pub fn read_migration_files(path: &Path) -> Result<Migrations> {
         let mut content = String::new();
         file.read_to_string(&mut content)?;
 
-        let migration_file = MigrationFile { content: Some(content), ..info };
+        let migration_file = MigrationFile {
+            content: Some(content),
+            direction: info.direction,
+            number: info.number as i32,
+            filename: filename.into(),
+            name: info.name,
+        };
         let migration_number = migration_file.number;
         let mut migration = match btreemap.remove(&migration_number) {
             None => Migration { up: None, down: None },
@@ -134,33 +148,39 @@ pub fn read_migration_files(path: &Path) -> Result<Migrations> {
     Ok(btreemap)
 }
 
-/// Gets a filename and check whether it's a valid format.
-/// If it is, grabs all the info from it
-fn parse_filename(filename: &str) -> Result<MigrationFile> {
-    let re = Regex::new(
-        r"^(?P<number>[0-9]{4})\.(?P<name>[_0-9a-zA-Z]*)\.(?P<direction>up|down)\.sql$"
-    ).unwrap();
+impl MigrationFileName {
+    /// Gets a filename and check whether it's a valid format.
+    /// If it is, grabs all the info from it
+    pub fn parse(filename: &str) -> Result<MigrationFileName> {
+        let re = Regex::new(
+            r"^(?P<number>[0-9]{4})\.(?P<name>[_0-9a-zA-Z]*)\.(?P<direction>up|down)\.sql$"
+        ).unwrap();
 
-    let caps = match re.captures(filename) {
-        None => bail!("File {} has an invalid filename", filename),
-        Some(c) => c
-    };
+        let caps = match re.captures(filename) {
+            None => bail!("File {} has an invalid filename", filename),
+            Some(c) => c
+        };
 
-    // Unwrapping below should be safe (in theory)
-    let number = caps.name("number").unwrap().as_str().parse::<i32>().unwrap();
-    let name = caps.name("name").unwrap().as_str();
-    let direction = if caps.name("direction").unwrap().as_str() == "up" {
-        Direction::Up
-    } else {
-        Direction::Down
-    };
+        // Unwrapping below should be safe (in theory)
+        let number = caps.name("number").unwrap().as_str().parse::<u32>().unwrap();
+        let name = caps.name("name").unwrap().as_str().to_string();
+        let direction = if caps.name("direction").unwrap().as_str() == "up" {
+            Direction::Up
+        } else {
+            Direction::Down
+        };
 
-    Ok(MigrationFile::new(filename, name, number, direction))
+        Ok(MigrationFileName {
+            number,
+            direction,
+            name,
+        })
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_filename, read_migration_files, Direction, get_filename};
+    use super::{MigrationFileName, read_migration_files, Direction, get_filename};
     use tempdir::TempDir;
     use std::path::{PathBuf};
     use std::io::prelude::*;
@@ -175,7 +195,7 @@ mod tests {
 
     #[test]
     fn test_parse_good_filename() {
-        let result = parse_filename("0001.tests.up.sql").unwrap();
+        let result = MigrationFileName::parse("0001.tests.up.sql").unwrap();
         assert_eq!(result.number, 1);
         assert_eq!(result.name, "tests");
         assert_eq!(result.direction, Direction::Up);
@@ -184,7 +204,7 @@ mod tests {
     #[test]
     fn test_parse_bad_filename_format() {
         // Has _ instead of . between number and name
-        let result = parse_filename("0001_tests.up.sql");
+        let result = MigrationFileName::parse("0001_tests.up.sql");
         assert_eq!(result.is_ok(), false);
     }
 
