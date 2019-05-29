@@ -41,7 +41,7 @@ pub struct MigrationFile {
 }
 
 pub struct MigrationFileName {
-    pub number: u32,
+    pub number: u16,
     pub name: String,
     pub direction: Direction,
 }
@@ -76,7 +76,7 @@ pub fn create_migration(path: &Path, slug: &str, number: i32) -> Result<()> {
     let fixed_slug = slug.replace(" ", "_");
 
     let migration_filename_up = MigrationFileName {
-        number: number as u32,
+        number: number as u16,
         name: fixed_slug,
         direction: Direction::Up,
     };
@@ -165,7 +165,7 @@ impl MigrationFileName {
         };
 
         // Unwrapping below should be safe (in theory)
-        let number = caps.name("number").unwrap().as_str().parse::<u32>().unwrap();
+        let number = caps.name("number").unwrap().as_str().parse::<u16>().unwrap();
         let name = caps.name("name").unwrap().as_str().to_string();
         let direction = if caps.name("direction").unwrap().as_str() == "up" {
             Direction::Up
