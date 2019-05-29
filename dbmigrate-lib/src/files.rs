@@ -1,7 +1,6 @@
 use std::fs;
 use std::fs::File;
 use std::io::Read;
-use std::iter::{repeat};
 use std::path::Path;
 use std::collections::{BTreeMap};
 
@@ -75,9 +74,20 @@ impl MigrationFile {
 /// Creates 2 migration file: one up and one down
 pub fn create_migration(path: &Path, slug: &str, number: i32) -> Result<()> {
     let fixed_slug = slug.replace(" ", "_");
-    let filename_up = get_filename(&fixed_slug, number, Direction::Up);
+
+    let migration_filename_up = MigrationFileName {
+        number: number as u32,
+        name: fixed_slug,
+        direction: Direction::Up,
+    };
+    let filename_up = migration_filename_up.to_string();
     MigrationFileName::parse(&filename_up)?;
-    let filename_down = get_filename(&fixed_slug, number, Direction::Down);
+
+    let migration_filename_down = MigrationFileName {
+        direction: Direction::Down,
+        ..migration_filename_up
+    };
+    let filename_down = migration_filename_down.to_string();
     MigrationFileName::parse(&filename_down)?;
 
     println!("Creating {}", filename_up);
@@ -86,13 +96,6 @@ pub fn create_migration(path: &Path, slug: &str, number: i32) -> Result<()> {
     File::create(path.join(filename_down.clone())).chain_err(|| format!("Failed to create {}", filename_down))?;
 
     Ok(())
-}
-
-/// Get the filename to use for a migration using the given data
-fn get_filename(slug: &str, number: i32, direction: Direction) -> String {
-    let num = number.to_string();
-    let filler = repeat("0").take(4 - num.len()).collect::<String>();
-    filler + &num + "." + slug + "." + &direction.to_string() + ".sql"
 }
 
 /// Read the path given and read all the migration files, pairing them by migration
@@ -178,9 +181,16 @@ impl MigrationFileName {
     }
 }
 
+impl ToString for MigrationFileName {
+    fn to_string(&self) -> String {
+        format!("{:04}.{}.{}.sql", self.number, self.name, self.direction.to_string())
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
-    use super::{MigrationFileName, read_migration_files, Direction, get_filename};
+    use super::{MigrationFileName, read_migration_files, Direction};
     use tempdir::TempDir;
     use std::path::{PathBuf};
     use std::io::prelude::*;
@@ -209,8 +219,13 @@ mod tests {
     }
 
     #[test]
-    fn test_get_filename_ok() {
-        let result = get_filename("initial", 1, Direction::Up);
+    fn test_migration_filename_to_string() {
+        let migration_file_name = MigrationFileName {
+            number: 1,
+            name: "initial".to_string(),
+            direction: Direction::Up
+        };
+        let result = migration_file_name.to_string();
         assert_eq!(result, "0001.initial.up.sql");
     }
 
