@@ -27,7 +27,6 @@ pub use drivers::{get_driver, Driver};
 pub use files::{
     create_migration,
     read_migration_files,
-    MigrationFile,
     Migration,
     Migrations,
     Direction,

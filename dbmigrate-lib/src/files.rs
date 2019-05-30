@@ -25,21 +25,6 @@ impl ToString for Direction {
     }
 }
 
-/// A single direction migration file
-#[derive(Debug)]
-pub struct MigrationFile {
-    /// Content of the file
-    pub content: Option<String>,
-    /// Direction
-    pub direction: Direction,
-    /// Number
-    pub number: i32,
-    /// Filename
-    pub filename: String,
-    /// Actual migration name (filename with number removed)
-    pub name: String
-}
-
 pub struct MigrationFileName {
     pub number: u16,
     pub name: String,
@@ -69,19 +54,6 @@ pub struct Migration {
 
 /// Simple way to hold migrations indexed by their number
 pub type Migrations = BTreeMap<u16, Migration>;
-
-impl MigrationFile {
-    /// Used when getting the info, therefore setting content to None at that point
-    fn new(filename: &str, name: &str, number: i32, direction: Direction) -> MigrationFile {
-        MigrationFile {
-            content: None,
-            filename: filename.to_owned(),
-            number: number,
-            name: name.to_owned(),
-            direction: direction
-        }
-    }
-}
 
 /// Creates 2 migration file: one up and one down
 pub fn create_migration(path: &Path, slug: &str, number: u16) -> Result<()> {
