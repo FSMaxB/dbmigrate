@@ -80,8 +80,10 @@ pub fn down(driver: Box<Driver>, migration_files: &Migrations) -> Result<()> {
         return Ok(());
     }
 
-    let mut numbers: Vec<i32> = migration_files.keys().cloned().filter(|i| i <= &current).collect();
-    numbers.sort_by(|a, b| b.cmp(a));
+    let numbers = migration_files.keys()
+        .rev()
+        .cloned()
+        .filter(|i| i <= &current);
 
     for number in numbers {
         let migration = migration_files.get(&number).unwrap();
