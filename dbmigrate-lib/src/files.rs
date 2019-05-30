@@ -84,11 +84,11 @@ impl MigrationFile {
 }
 
 /// Creates 2 migration file: one up and one down
-pub fn create_migration(path: &Path, slug: &str, number: i32) -> Result<()> {
+pub fn create_migration(path: &Path, slug: &str, number: u16) -> Result<()> {
     let fixed_slug = slug.replace(" ", "_");
 
     let migration_filename_up = MigrationFileName {
-        number: number as u16,
+        number,
         name: fixed_slug,
         direction: Direction::Up,
     };
