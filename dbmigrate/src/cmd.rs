@@ -1,37 +1,29 @@
 use std::path::Path;
 use std::time::Instant;
 
-use dbmigrate_lib::{Driver, create_migration, Migrations, Direction};
+use dbmigrate_lib::{Driver, create_migration, Migrations, MigrationFile, Direction};
 use print;
 use errors::{Result};
 
 
 // Does the whole migration thingy, along with timing and handling errors
-macro_rules! migrate {
-    ($driver: ident, $mig_file: ident) => {
-        println!(
-            "Running {} migration #{}: {}",
-            $mig_file.direction.to_string(), $mig_file.number, $mig_file.name
-        );
-        let res = {
-            let start = Instant::now();
+fn migrate(driver: &dyn Driver, migration_file: &MigrationFile) -> Result<()> {
+    let direction = &migration_file.direction;
+    println!("Running {} migration #{}: {}", direction.to_string(), migration_file.number, migration_file.name);
 
-            match $driver.migrate(
-                $mig_file.content.clone().unwrap(),
-                if $mig_file.direction == Direction::Up { $mig_file.number } else { $mig_file.number - 1}
-            ) {
-                Err(e) => Err(e),
-                Ok(_) => {
-                    let duration = start.elapsed();
-                    print::success(&format!("> Done in {} second(s)", duration.as_secs()));
-                    Ok(())
-                }
-            }
-        };
-        if res.is_err() {
-            return res.map_err(|e| e.into());
-        }
-    }
+    let start = Instant::now();
+
+    let number = match direction {
+        Direction::Up => migration_file.number,
+        Direction::Down => migration_file.number - 1,
+    };
+    let content = migration_file.content.as_ref().unwrap().to_owned();
+
+    driver.migrate(content, number)?;
+
+    let duration = start.elapsed();
+    print::success(&format!("> Done in {} second(s)", duration.as_secs()));
+    Ok(())
 }
 
 pub fn create(migration_files: &Migrations, path: &Path, slug: &str) -> Result<()> {
@@ -75,7 +67,7 @@ pub fn up(driver: Box<Driver>, migration_files: &Migrations) -> Result<()> {
     for (number, migration) in migration_files.iter() {
         if number > &current {
             let mig_file = migration.up.as_ref().unwrap();
-            migrate!(driver, mig_file);
+            migrate(driver.as_ref(), mig_file)?;
         }
     }
     Ok(())
@@ -94,7 +86,7 @@ pub fn down(driver: Box<Driver>, migration_files: &Migrations) -> Result<()> {
     for number in numbers {
         let migration = migration_files.get(&number).unwrap();
         let mig_file = migration.down.as_ref().unwrap();
-        migrate!(driver, mig_file);
+        migrate(driver.as_ref(), mig_file)?;
     }
     Ok(())
 }
@@ -110,8 +102,8 @@ pub fn redo(driver: Box<Driver>, migration_files: &Migrations) -> Result<()> {
     let down_file = migration.down.as_ref().unwrap();
     let up_file = migration.up.as_ref().unwrap();
 
-    migrate!(driver, down_file);
-    migrate!(driver, up_file);
+    migrate(driver.as_ref(), down_file)?;
+    migrate(driver.as_ref(), up_file)?;
     Ok(())
 }
 
@@ -125,6 +117,6 @@ pub fn revert(driver: Box<Driver>, migration_files: &Migrations) -> Result<()> {
     let migration = migration_files.get(&current).unwrap();
     let down_file = migration.down.as_ref().unwrap();
 
-    migrate!(driver, down_file);
+    migrate(driver.as_ref(), down_file)?;
     Ok(())
 }
