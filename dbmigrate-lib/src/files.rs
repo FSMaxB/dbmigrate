@@ -46,17 +46,29 @@ pub struct MigrationFileName {
     pub direction: Direction,
 }
 
-/// A migration has 2 files: one up and one down
+pub struct MigrationNameAndContent {
+    pub name: String,
+    pub content: String,
+}
+
+pub struct PartialMigration {
+    pub up: Option<MigrationNameAndContent>,
+    pub down: Option<MigrationNameAndContent>,
+}
+
+/// A migration has 2 components: one up and one down
 #[derive(Debug)]
 pub struct Migration {
-    /// The Up file
-    pub up: Option<MigrationFile>,
-    /// The Down file
-    pub down: Option<MigrationFile>
+    /// The Up migration
+    pub up: String,
+    /// The Down migration
+    pub down: String,
+    /// The name of the migration
+    pub name: String,
 }
 
 /// Simple way to hold migrations indexed by their number
-pub type Migrations = BTreeMap<i32, Migration>;
+pub type Migrations = BTreeMap<u16, Migration>;
 
 impl MigrationFile {
     /// Used when getting the info, therefore setting content to None at that point
@@ -101,7 +113,7 @@ pub fn create_migration(path: &Path, slug: &str, number: i32) -> Result<()> {
 /// Read the path given and read all the migration files, pairing them by migration
 /// number and checking for errors along the way
 pub fn read_migration_files(path: &Path) -> Result<Migrations> {
-    let mut btreemap: Migrations = BTreeMap::new();
+    let mut partial_migrations: BTreeMap<_, PartialMigration> = BTreeMap::new();
 
     for entry in fs::read_dir(path).chain_err(|| format!("Failed to open {:?}", path))? {
         let entry = entry.unwrap();
@@ -117,38 +129,58 @@ pub fn read_migration_files(path: &Path) -> Result<Migrations> {
         let mut content = String::new();
         file.read_to_string(&mut content)?;
 
-        let migration_file = MigrationFile {
-            content: Some(content),
-            direction: info.direction,
-            number: info.number as i32,
-            filename: filename.into(),
+        let migration_name_and_content = MigrationNameAndContent {
             name: info.name,
+            content: content.clone(),
         };
-        let migration_number = migration_file.number;
-        let mut migration = match btreemap.remove(&migration_number) {
-            None => Migration { up: None, down: None },
-            Some(m) => m
+
+        let migration_number = info.number;
+        let partial_migration = match partial_migrations.remove(&migration_number) {
+            None => match info.direction {
+                Direction::Up => PartialMigration {
+                    up: Some(migration_name_and_content),
+                    down: None,
+                },
+                Direction::Down => PartialMigration {
+                    up: None,
+                    down: Some(migration_name_and_content),
+                }
+            },
+            Some(mut previous_partial_migration) => {
+                match info.direction {
+                    Direction::Up => previous_partial_migration.up = Some(migration_name_and_content),
+                    Direction::Down => previous_partial_migration.down = Some(migration_name_and_content),
+                };
+                previous_partial_migration
+            }
         };
-        if migration_file.direction == Direction::Up {
-            migration.up = Some(migration_file);
-        } else {
-            migration.down = Some(migration_file);
-        }
-        btreemap.insert(migration_number, migration);
+
+        partial_migrations.insert(info.number, partial_migration);
     }
 
-    // Let's check the all the files we need now
-    let mut index = 1;
-    for (number, migration) in &btreemap {
-        if index != *number {
-            bail!("Files for migration {} are missing", index);
+    let mut migrations = Migrations::new();
+    for (index, (number, partial_migration)) in partial_migrations.into_iter().enumerate() {
+        if (index + 1) != usize::from(number) {
+            bail!("Files for migration {} are missing", index + 1);
         }
-        if migration.up.is_none() || migration.down.is_none() {
-            bail!("Migration {} is missing its up or down file", index);
-        }
-        index += 1;
+
+        let migration = match partial_migration {
+            PartialMigration { up: Some(up_migration), down: Some(down_migration)} => {
+                if up_migration.name != down_migration.name {
+                    bail!("Migration {} has mismatching namew for up ({}) and down ({})", number, up_migration.name, down_migration.name);
+                }
+                Migration {
+                    up: up_migration.content,
+                    down: down_migration.content,
+                    name: up_migration.name,
+                }
+            },
+            _ => bail!("Migration {} is missing its up or down file", number),
+        };
+        migrations.insert(number, migration);
     }
-    Ok(btreemap)
+
+    Ok(migrations)
 }
 
 impl MigrationFileName {
