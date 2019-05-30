@@ -36,23 +36,24 @@ impl Driver for Postgres {
         self.conn.execute("DROP TABLE __dbmigrate_table;", &[]).unwrap();
     }
 
-    fn get_current_number(&self) -> i32 {
+    fn get_current_number(&self) -> u16 {
         let stmt = self.conn.prepare("
             SELECT current FROM __dbmigrate_table WHERE id = 1;
         ").unwrap();
         let results = stmt.query(&[]).unwrap();
 
-        results.get(0).get("current")
+        let current_number: i32 = results.get(0).get("current");
+        current_number as u16
     }
 
-    fn set_current_number(&self, number: i32) {
+    fn set_current_number(&self, number: u16) {
         let stmt = self.conn.prepare(
             "UPDATE __dbmigrate_table SET current = $1 WHERE id = 1;"
         ).unwrap();
-        stmt.execute(&[&number]).unwrap();
+        stmt.execute(&[&i32::from(number)]).unwrap();
     }
 
-    fn migrate(&self, migration: String, number: i32) -> Result<()> {
+    fn migrate(&self, migration: String, number: u16) -> Result<()> {
         self.conn.batch_execute(&migration).chain_err(|| "Migration failed")?;
         self.set_current_number(number);
 

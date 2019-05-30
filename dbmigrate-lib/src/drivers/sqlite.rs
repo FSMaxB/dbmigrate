@@ -33,20 +33,20 @@ impl Driver for Sqlite {
         self.conn.execute("DROP TABLE __dbmigrate_table;", &[]).unwrap();
     }
 
-    fn get_current_number(&self) -> i32 {
+    fn get_current_number(&self) -> u16 {
         self.conn.query_row("
             SELECT current FROM __dbmigrate_table WHERE id = 1;
         ", &[], |row| { row.get(0)}).unwrap()
     }
 
-    fn set_current_number(&self, number: i32) {
+    fn set_current_number(&self, number: u16) {
         let mut stmt = self.conn.prepare(
             "UPDATE __dbmigrate_table SET current = ? WHERE id = 1;"
         ).unwrap();
         stmt.execute(&[&number]).unwrap();
     }
 
-    fn migrate(&self, migration: String, number: i32) -> Result<()> {
+    fn migrate(&self, migration: String, number: u16) -> Result<()> {
         self.conn.execute_batch(&migration).chain_err(|| "Migration failed")?;
         self.set_current_number(number);
 

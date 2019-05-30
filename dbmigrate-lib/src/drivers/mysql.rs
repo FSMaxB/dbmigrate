@@ -35,23 +35,23 @@ impl Driver for Mysql {
         self.pool.prep_exec("DROP TABLE __dbmigrate_table;", ()).unwrap();
     }
 
-    fn get_current_number(&self) -> i32 {
+    fn get_current_number(&self) -> u16 {
         let mut result = self.pool.prep_exec("
             SELECT current FROM __dbmigrate_table WHERE id = 1;
         ", ()).unwrap();
         // That is quite ugly
         let row = result.next().unwrap();
-        from_row::<i32>(row.unwrap())
+        from_row::<u16>(row.unwrap())
     }
 
-    fn set_current_number(&self, number: i32) {
+    fn set_current_number(&self, number: u16) {
         self.pool.prep_exec(
             "UPDATE __dbmigrate_table SET current = ? WHERE id = 1;",
             (&number, )
         ).unwrap();
     }
 
-    fn migrate(&self, migration: String, number: i32) -> Result<()> {
+    fn migrate(&self, migration: String, number: u16) -> Result<()> {
         let mut conn = self.pool.get_conn()?;
         conn.query(migration).chain_err(|| "Migration failed")?;
         self.set_current_number(number);
